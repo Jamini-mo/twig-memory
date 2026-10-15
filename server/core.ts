@@ -361,6 +361,45 @@ export class HeadlessMuninn {
     return f
   }
 
+  /* ---------- 存量线索维护（陆绪 2026-10-15）：批量结案 / 归档 / 重写 ---------- */
+  maintainThreads(
+    actions: Array<{ type: string; id: string; label?: string; openQuestion?: string; note?: string }>,
+  ): { ok: number; results: Array<{ id: string; type: string; ok: boolean; error?: string }> } {
+    const results: Array<{ id: string; type: string; ok: boolean; error?: string }> = []
+    for (const a of actions) {
+      const t = this.state.threads.find((x) => x.id === a.id)
+      if (!t) {
+        results.push({ id: a.id, type: a.type, ok: false, error: '线索不存在' })
+        continue
+      }
+      if (a.type === 'resolve') {
+        if (t.status === 'unresolved') {
+          t.status = 'resolved'
+          t.pool = 'ARCHIVE'
+          t.closureReason = a.note ?? '人工结案（存量治理）'
+          t.history.push({ day: 0, fragmentId: '', note: a.note ?? '结案：存量治理' })
+          this.dirty = true
+        }
+        results.push({ id: a.id, type: a.type, ok: true })
+      } else if (a.type === 'abandon') {
+        t.status = 'abandoned'
+        t.pool = 'ARCHIVE'
+        t.closureReason = a.note ?? '人工归档（存量治理）'
+        t.history.push({ day: 0, fragmentId: '', note: a.note ?? '归档：存量治理' })
+        this.dirty = true
+        results.push({ id: a.id, type: a.type, ok: true })
+      } else if (a.type === 'relabel') {
+        if (typeof a.label === 'string' && a.label) t.label = a.label
+        if (typeof a.openQuestion === 'string' && a.openQuestion) t.openQuestion = a.openQuestion
+        t.history.push({ day: 0, fragmentId: '', note: a.note ?? '重写标签（存量治理）' })
+        this.dirty = true
+        results.push({ id: a.id, type: a.type, ok: true })
+      } else {
+        results.push({ id: a.id, type: a.type, ok: false, error: '未知动作：' + a.type })
+      }
+    }
+    return { ok: results.filter((r) => r.ok).length, results }
+  }
   private resolveThread(id: string, fragmentId: string, note: string, closureReason: string): boolean {
     const t = this.state.threads.find((x) => x.id === id)
     if (!t || t.status !== 'unresolved') return false
