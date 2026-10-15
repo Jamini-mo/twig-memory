@@ -588,6 +588,25 @@ const server = createServer(async (req, res) => {
       return send(res, 200, { thread, events })
     }
 
+    if (req.method === 'POST' && url.pathname === '/v1/threads/maintain') {
+      const body = await readBody(req)
+      const uid = String(body.userId ?? '')
+      if (!uid) return send(res, 400, { error: 'userId 必填' })
+      const rawActions = Array.isArray(body.actions) ? body.actions : []
+      if (rawActions.length === 0) return send(res, 400, { error: 'actions 必填（非空数组）' })
+      const actions = rawActions.slice(0, 500).map((a) => {
+        const o = (a ?? {}) as Record<string, unknown>
+        return {
+          type: String(o.type ?? ''),
+          id: String(o.id ?? ''),
+          label: typeof o.label === 'string' ? o.label : undefined,
+          openQuestion: typeof o.openQuestion === 'string' ? o.openQuestion : undefined,
+          note: typeof o.note === 'string' ? o.note : undefined,
+        }
+      })
+      const out = await manager.withLock(uid, async (e) => e.maintainThreads(actions))
+      return send(res, 200, out)
+    }
     return send(res, 404, { error: 'not found' })
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err)
